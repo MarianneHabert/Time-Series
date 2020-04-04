@@ -1,0 +1,169 @@
+---
+title: "Project Time Series"
+output:
+  word_document: default
+  html_document: default
+---
+
+## Project Time Series
+
+# Exercise 9
+
+We study the monthly SNCF trafic, from 1963 on. We remove the data about the last year, in order fit a model and assess the quality of the predictions
+
+1. Is the series stationary ? Study the series of differences. Is it ready for an ARMA modelling ?
+
+```{r}
+Y=scan('https://www.math.univ-toulouse.fr/~barthe/M2timeseries/trafic.dat') 
+Y=ts(Y,start=1963,frequency=12)
+X=window(Y,end=1979+11/12)
+```
+
+```{r}
+par(mfrow = c(2,2)) 
+ts.plot(X)
+acf(X)
+pacf(X)
+```
+By looking at the plot of the time series X, we can see that it is not stationnary over the time. Furthermore, the auto correlation function (ACF) is not converging, nor the partial autocorrelation function (PACF).
+Thanks to this PACF we can think about a correlation between lag 1 and lag 12, which can corresponds to a monthly seasonality.
+To deal with the non stationnarity, we will differentiate the series once by multiplying X by (I-B), B is the backshift operator and I the identity matrix.
+
+```{r}
+par(mfrow = c(2,2)) 
+dX<-diff(X)
+ts.plot(dX)
+acf(dX)
+pacf(dX)
+```
+Here, the series seems to be much more stationnary than the previous one. The PACF is not converging over the time and the ACF shows us a corelation between the terms at the lag 1 and the lag 12. This series is not ready yet for the ARMA modelling as either the ACF nor the PACF are converging to zero. 
+
+
+2. Differentiate again in order to remove seasonality
+Study carefully the correlation structure of this series. What model would you propose for it ?
+
+```{r}
+par(mfrow = c(2,2)) 
+diff12X=diff(diff(X),lag=12)
+ts.plot(diff12X)
+acf(diff12X)
+pacf(diff12X)
+```
+
+Here, the series is staying stationnary. the ACF is much more better than previously as it converges to zero after lag=13. We don't need to have a look on the PACF as the model which can be used here could be a moving average process MA. Thus, we can propose a SARIMA model for X, which is a seasonality ARIMA process.
+The diff12X could be an ARMA (p+SP,q+SQ) with p+SP=0 and q+SQ=13, we can propose the following model for X:
+X is a SARIMA $(0,1,1)\times(0,1,1)_{12}$ and can be writed as following :
+$(I-B)(I-B^{12})X=(-0.5B)(-0.3B^{12})\epsilon$ where -0.5 and -0.3 are find thanks to the ACF at lag 1 and 12.
+
+
+3. Explain why the following model SARIMA is interesting
+
+```{r}
+sarimaX<-arima(X,order=c(0,1,1),seasonal=list(order=c(0,1,1),period=12))
+```
+
+This model is a SARIMA $(0,1,1)\times(0,1,1)_{12}$. As explained previously, this model would correspond quite well to our data. The aim of transforming the data by differenciation is to have an ARMA process which is really convenient to study as it is stationnary and is a function of $X_t$'s and $\epsilon_t$.
+
+
+4. Study its residues. Make predictions (draw them on a graph together with a confidence interval and the real values for the last year)
+
+
+```{r}
+par(mfrow=c(1,2))
+mean(sarimaX$residuals)
+sd(sarimaX$residuals)
+plot(sarimaX$residuals)
+p=predict(sarimaX,100)
+ts.plot(X,p$pred,p$pred+1.96*p$se,p$pred-1.96*p$se,lty=c(1,2,3,3))
+```
+
+The residuals of the model seems to follow a Gaussian distribution with a mean equal to 10.82 and a variance equal to 156.77 which is not hudge compare to the range of the data. The last graph shows us the prediction of the SNCF data in the future with the confidence interval (in dotted points) of degree $1-\alpha$ with $\alpha=0.05$. We can see that it follows the same trend than previously but the confidence interval become more and more larger as we need the observations of the past to predict well the model and we don't have a lot of observations of the past when we go further to the future.
+
+
+Comparison of the results obtained by the SARIMA approach with the ones we got in the end of Exercise 2, with the function 'decompose'.
+
+```{r}
+trafic=read.csv('https://www.math.univ-toulouse.fr/~barthe/M2timeseries/trafic.dat')
+X=ts(trafic,start=1963,frequency=12)
+plot(decompose(X))
+```
+ 
+The function 'decompose' is useful when we want to decompose a time series into seasonal, trend and residuals components. Using this function is not a good method for prediction as the trend is depending on a MA process, thus on the past so it is less precise than the SARIMA process using just previously. Furthermore, the function decompose considers here an ARMA process and we prove previously that it is more a SARIMA process than an ARMA process.
+
+
+
+# Exercise 10
+
+1. Simulate and study some ARCH and GARCH processes (using the TSA package).
+
+```{r}
+library('TSA')
+```
+
+```{r}
+a<-garch.sim(alpha=c(0.1,0.4),n=500)
+ts.plot(a)
+```
+
+By looking at the plot, we can see that the time series looks like a stationnary process but there are some extreme variation at some points which correspond to an heteresokedasticity of the variance.
+Here, $(X_t)_{t \in Z}$ is an ARCH(1) process with $\mathcal{L}(X_t|[X]^{t-1}_{-\infty})=\mathcal{N}(0,\sigma_t^2)$. Indeed, this time series is a white noise as we are simulating an ARCH process with a mean equal to 0 and an unconditional variance $E(X_{t}^2)$ equal to $\frac{\alpha_0}{1-\displaystyle \sum_{i \ge 1}\alpha_i}$.
+whth $\sigma_t^2=\alpha_0+\alpha_1X_t^2+...+\alpha_pX_{t-p}^2$. As the coefficients are $\alpha_{0}=0.1$ and $\alpha_{1}=0.4$, the unconditionnal variance is then $E(X_t^2)=\frac{0.1}{1-0.4}=\frac{1}{6}$. As said in the course, the sum of the coefficients need to be stricty inferior to 1, which is the case here (0.1+0.4=0.5<1). 
+
+```{r}
+g<-garch.sim(alpha=c(0.2,0.1),beta=0.4,n=500)
+ts.plot(g)
+```
+
+By looking at the plot,as previously, we can see that the time series looks like a stationnary process but there are some extreme variation at some points which correspond to an heteresokedasticity of the variance.
+Here, $(X_t)_{t \in Z}$ is an GARCH(1,1) process with $\mathcal{L}(X_t|[X]^{t-1}_{-\infty})=\mathcal{N}(0,\sigma_t^2)$. Indeed, this time series is a white noise as we are simulating an GARCH process with a mean equal to 0 and an unconditional variance $E(X_{t}^2)$ equal to $\frac{\alpha_0}{1-\displaystyle \sum_{i \ge 1}\alpha_i-\displaystyle \sum_{j \ge 1}\beta_j}$.
+whth $\sigma_t^2=\alpha_0+\alpha_1X_t^2+...+\alpha_pX_{t-p}^2+\beta_1\sigma_t^2+...+\beta_q\sigma_{t-q}^2$.As the coefficients are $\alpha_{0}=0.2$,$\alpha_{1}=0.1$ and $\beta_{1}=0.4$, the unconditionnal variance is then $E(X_t^2)=\frac{0.2}{1-(0.1+0.4)}=0.4$. As said in the course, the sum of the coefficients need to be stricty inferior to 1 and strictly superior to 0, which is the case here (0<0.2+0.1+0.4=0.7<1).
+
+
+2. Study one of the 4 series given in the data EuStockMarket. After possible transformation of the
+data, propose a model for it and make predictions for the next two weeks.
+
+```{r}
+v=EuStockMarkets[,1]
+ts.plot(v)
+```
+
+Here,the ARCH (or GARCH) process is a good way to model a financial time series as the financial term are most of the time serially uncorrelated but their variances are correlated. However, this series cannot be study as a garch process because we need to study a white noise, thus a stationnary time series, which is not the case here. Therefore, we will differentiate the log of the series. The log transformation will allows us to have less extreme value that are, in fact, variation that are normal and keep just the real extreme values. The differentiation will allow us to have a stationnary time series, which can be interpreted as a GARCH.
+
+```{r}
+par(mfrow=c(2,2))
+diffCAC<-diff(log(1+v))
+ts.plot(diffCAC)
+acf(diffCAC)
+pacf(diffCAC)
+```
+
+Here, we can see that the series is stationnary, with a lot of extreme pics. Thus, we can interpret it as a GARCH process and then squared it as the square of this series will be interpreted as an ARMA process.
+
+```{r}
+par(mfrow=c(1,2))
+diffCAC2<-diffCAC^2
+acf(diffCAC2)
+pacf(diffCAC2)
+mean(diffCAC2)
+```
+
+Here, the ACF and PACF can be interpreted like in an ARMA process. By looking at the ACF, we can say that it exceded the threshold at different lag and it not really converging to 0 but after lag 2, it significantly decrease. However, the PACF of this time series is more or less converging to 0 after lag 3. Therefore, the square of the differentiate of the log of the CAC time series, which will be denoted $(Y_t)_{t \in Z}$ can be modelling by an ARMA(max(p,q),q)=ARMA(max(2,3),3)=ARMA(3,3) and can be written as following :
+$(I-0.08B-0.16B^2-0.05B^3)Y=(I+0.06B+0.18B^2+0.06B^3)\epsilon$ where the coefficients (0.08,0.16,0.05,0.06,0.18,0.06) correspond to the number associated to each third pics of the PACF and ACF respectively. 
+Thus, the differentiation of the log of the CAC time series is well defined as a GARCH(p,q)=GARCH(2,3).
+We know that $E(X_{t}^2)$ equal to $\frac{\alpha_0}{1-\displaystyle \sum_{i \ge 1}\alpha_i-\displaystyle \sum_{j \ge 1}\beta_j}$, and here, $E(X_{t}^2)=0.0001063874$. 
+
+
+```{r}
+library(fGarch)
+fit = garchFit( ~ garch(1, 3), data = diffCAC)
+```
+
+Thus, by denoting $(Z_t)_{t \in Z}$ the diffentiation of the log of the CAC time series, we can say that Z is a GARCH(1,3) process with $\mathcal{L}(Z_t|[Z]^{t-1}_{-\infty})=\mathcal{N}(0,\sigma_t^2)$
+where $\sigma_t^2=(5.02023e-6)+0.1044138X_{t-1}^2+0.1712529\sigma_{t-1}^2+0.1219171\sigma_{t-2}^2+0.5570663\sigma_{t-3}^2$ with the sum all of the coefficients strictly inferior to 1 and strictly superior to 0.
+
+```{r}
+prediction<-predict(fit,n.ahead=10,plot=TRUE)
+```
+
+Here are the prediction (in red) of the white noise with the confidence intervals (range between the green and the blue line) for 10 days, which is equivalent to two weeks of data. We just have then to integrate it and apply the exponential function to have the real prediction of the CAC time series.
+
